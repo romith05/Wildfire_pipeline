@@ -3,25 +3,25 @@ import folium
 from streamlit_folium import st_folium
 import random
 import requests
-def is_water_body_osm(lat, lon):
-    url = f"https://nominatim.openstreetmap.org/reverse"
-    params = {
-        "format": "json",
-        "lat": lat,
-        "lon": lon,
-        "zoom": 14,
-        "addressdetails": 1
-    }
-    headers = {"User-Agent": "wildfire-risk-app"}
-    response = requests.get(url, params=params, headers=headers)
+import rasterio
+from rasterio.transform import rowcol
+from pyproj import Transformer
 
-    if response.status_code == 200:
-        data = response.json()
-        name = data.get("name", "").lower()
-        display_name = data.get("display_name", "").lower()
-        keywords = ["lake", "river", "ocean", "creek", "bay", "pond"]
-        return any(kw in name or kw in display_name for kw in keywords)
-    return False
+def is_water_body(lat, lon, tiff_path):
+    with rasterio.open(tiff_path) as src:
+        # Set up coordinate transformer if needed
+        if src.crs.to_string() != "EPSG:4326":
+            transformer = Transformer.from_crs("EPSG:4326", src.crs, always_xy=True)
+            lon, lat = transformer.transform(lon, lat)
+        
+        try:
+            row, col = src.index(lon, lat)
+            value = src.read(1, window=((row, row+1), (col, col+1)))[0, 0]
+            return value == 1
+        except Exception as e:
+            print("Error:", e)
+            return False
+
 
 
 
@@ -40,11 +40,11 @@ if map_mode == "Click Prediction Map":
 
         m = folium.Map(location=[54.0, -115.0], zoom_start=6, min_zoom=6, max_bounds=True)
 
-        folium.Marker(
-            location=[53.5, -113.5],
-            tooltip="Click on the map",
-            icon=folium.Icon(color="blue")
-        ).add_to(m)
+        # folium.Marker(
+        #     location=[53.5, -113.5],
+        #     tooltip="Click on the map",
+        #     icon=folium.Icon(color="blue")
+        # ).add_to(m)
 
         map_data = st_folium(m, width=700, height=500)
 
@@ -57,7 +57,7 @@ if map_mode == "Click Prediction Map":
 
             st.markdown(f"**Selected Location:** `{lat:.4f}, {lon:.4f}`")
 
-            if is_water_body_osm(lat, lon):
+            if is_water_body(lat, lon,"dsw-2023-mask.tif"):
                 percentage = 0.0
                 is_water = True
             else:
@@ -116,5 +116,3 @@ st.markdown("""
     <em>This section will be added later with more insights or visualizations.</em>
 </div>
 """, unsafe_allow_html=True)
-
-
