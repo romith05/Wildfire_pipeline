@@ -6,7 +6,8 @@ import requests
 import rasterio
 from rasterio.transform import rowcol
 from pyproj import Transformer
-
+from folium.plugins import HeatMap
+import plotly.express as px
 def is_water_body(lat, lon, tiff_path):
     with rasterio.open(tiff_path) as src:
         # Set up coordinate transformer if needed
@@ -21,9 +22,6 @@ def is_water_body(lat, lon, tiff_path):
         except Exception as e:
             print("Error:", e)
             return False
-
-
-
 
 # Layout setup
 st.set_page_config(layout="wide")
@@ -46,7 +44,7 @@ if map_mode == "Click Prediction Map":
         #     icon=folium.Icon(color="blue")
         # ).add_to(m)
 
-        map_data = st_folium(m, width=700, height=500)
+        map_data = st_folium(m, width=1000, height=700)
 
     with right_col:
         st.subheader("📈 Prediction Result")
@@ -61,31 +59,15 @@ if map_mode == "Click Prediction Map":
                 percentage = 0.0
                 is_water = True
             else:
-                try:
-                    response = requests.post(
-                    "http://model:5000/predict",  # <-- Use 'localhost:5000' if running locally
-                    json={"lat": lat, "lon": lon},
-                    timeout=5)
-                    if response.status_code == 200:
-                        result = response.json()
-                        prob = result.get("probability", None)
-        
-                        if prob is not None:
-                            percentage = prob * 100
-                        else:
-                    st.error("❌ No probability returned by model.")
-            else:
-                st.error(f"❌ Model error: {response.status_code} - {response.text}")
-        except Exception as e:
-            st.error(f"❌ Error contacting model: {e}")
-
+                percentage = round(random.uniform(0, 1) * 100, 1)
+                is_water = False
 
             st.markdown(
                 f"""
                 <div style="font-family: 'Georgia', serif; 
                             font-size: 48px; 
                             font-weight: bold; 
-                            color: {'#1f77b4' if is_water else '#d62728'}; 
+                            color: {"#000000" if is_water else "#000000"}; 
                             text-align: center;
                             margin-top: 30px;">
                     {percentage:.1f}% Risk
@@ -110,25 +92,63 @@ elif map_mode == "Historical Heatmap":
     st.subheader("🔥 Historical Wildfire Occurrences Heatmap")
 
     # Example heatmap data (lat, lon) — replace with real historical wildfire data
-    heat_data = [
-        [53.5, -113.5],
-        [54.0, -114.0],
-        [55.0, -115.5],
-        [52.0, -116.0],
-        [54.5, -117.2]
-    ]
+    
 
-    m = folium.Map(location=[54.0, -115.0], zoom_start=6, min_zoom=6, max_bounds=True)
 
-    HeatMap(heat_data).add_to(m)
-
-    st_folium(m, width=1000, height=600)
+    
 
 # Bottom placeholder section
 st.markdown("---")
-st.subheader("🔧 Additional Analysis (Coming Soon)")
+st.subheader("🔧 Additional Analysis ")
 st.markdown("""
 <div style="border: 2px dashed gray; padding: 20px; border-radius: 10px; background-color: #f9f9f9;">
     <em>This section will be added later with more insights or visualizations.</em>
 </div>
 """, unsafe_allow_html=True)
+st.title("🔥 Wildfire Historical Analysis")
+
+# Create 4 columns
+col1, col2 = st.columns(2)
+col3, col4 = st.columns(2)
+
+# === 1. HEATMAP ===
+with col1:
+    st.subheader("🔥 Wildfire Heatmap (Density)")
+    map_center = [54.0, -115.0]
+    import pandas as pd
+    # Replace with your actual file path
+    df = pd.read_csv("historical_wildfire.csv")
+
+    # Drop missing values if necessary
+    df = df.dropna(subset=['latitude', 'longitude'])
+
+
+    map_center = [54.0, -115.0]
+    m = folium.Map(location=map_center, zoom_start=4, min_zoom=6, max_bounds=True)
+
+    # Create a list of coordinate points
+    heat_data = df[['latitude', 'longitude']].values.tolist()
+
+    #  Add heatmap
+    HeatMap(heat_data, radius=10).add_to(m)
+    st_folium(m, width=700, height=700)
+# === 2. BAR CHART: Yearly Wildfires ===
+with col2:
+    st.subheader("📊 Yearly Wildfire Counts")
+    if 'fire_year' in df.columns:
+        year_counts = df['fire_year'].value_counts().sort_index()
+        st.bar_chart(year_counts)
+
+# === 3. HISTOGRAM: Fire Sizes ===
+with col3:
+    st.subheader("📏 Distribution of Fire Sizes")
+    #st.plotly_chart(px.histogram(df, fire_year="size", nbins=50, title="Histogram of Fire Sizes"))
+
+# === 4. PIE CHART: Proportion by Cause (if available) ===
+with col4:
+    st.subheader("🧯 Fire Causes (if available)")
+    if 'fuel_type' in df.columns:
+        cause_counts = df['fuel_type'].value_counts()
+        st.plotly_chart(px.pie(names=cause_counts.index, values=cause_counts.values, title="Fire Causes"))
+    else:
+        st.info("No 'cause' column found in the data.")
