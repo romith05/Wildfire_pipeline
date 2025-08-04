@@ -28,3 +28,4 @@ services:
       - "5801:8501"
     depends_on:
       - duckdb
+      - ml
