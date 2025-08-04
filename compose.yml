@@ -3,12 +3,10 @@ version: '3.9'
 services:
   duckdb:
     build:
-      context: .
-      dockerfile: Dockerfile.duckdb
+      context: ./db
     volumes:
-      - .:/app
+      - ./db:/app
     working_dir: /app
-    command: python dbserve.py
     ports:
       - "9999:9999"
   ml:
@@ -18,12 +16,10 @@ services:
     
   dashboard:
     build:
-      context: .
-      dockerfile: Dockerfile.dashboard
+      context: ./dashboard
     volumes:
-      - .:/app
+      - ./dashboard:/app
     working_dir: /app
-    command: python front.py
     ports:
       - "5801:8501"
     depends_on:
