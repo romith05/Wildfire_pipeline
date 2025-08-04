@@ -61,8 +61,24 @@ if map_mode == "Click Prediction Map":
                 percentage = 0.0
                 is_water = True
             else:
-                percentage = round(random.uniform(0, 1) * 100, 1)
-                is_water = False
+                try:
+                    response = requests.post(
+                    "http://model:5000/predict",  # <-- Use 'localhost:5000' if running locally
+                    json={"lat": lat, "lon": lon},
+                    timeout=5)
+                    if response.status_code == 200:
+                        result = response.json()
+                        prob = result.get("probability", None)
+        
+                        if prob is not None:
+                            percentage = prob * 100
+                        else:
+                    st.error("❌ No probability returned by model.")
+            else:
+                st.error(f"❌ Model error: {response.status_code} - {response.text}")
+        except Exception as e:
+            st.error(f"❌ Error contacting model: {e}")
+
 
             st.markdown(
                 f"""
