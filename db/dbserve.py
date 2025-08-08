@@ -15,9 +15,8 @@ def main():
     # Start  DuckDB HTTP server
     os.environ['DUCKDB_HTTPSERVER_FOREGROUND'] = '1'
     info = con.execute("SELECT httpserve_start('0.0.0.0', 9999, '');").fetchall()
-
-    print("🟢 DuckDB HTTP server is running at http://localhost:9999")
-    print(info)
+    print(info[0])
+    
 
 if __name__ == "__main__":
     main()
