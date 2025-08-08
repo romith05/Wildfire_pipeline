@@ -8,6 +8,10 @@ from rasterio.transform import rowcol
 from pyproj import Transformer
 from folium.plugins import HeatMap
 import plotly.express as px
+import pickle as pkl    
+import pandas as pd
+import numpy as np
+from io import StringIO
 def is_water_body(lat, lon, tiff_path):
     with rasterio.open(tiff_path) as src:
         # Set up coordinate transformer if needed
@@ -88,67 +92,99 @@ if map_mode == "Click Prediction Map":
         else:
             st.info("Click on the map to get wildfire risk prediction.")
 
-elif map_mode == "Historical Heatmap":
-    st.subheader("🔥 Historical Wildfire Occurrences Heatmap")
-
-    # Example heatmap data (lat, lon) — replace with real historical wildfire data
-    
-
-
-    
+# elif map_mode == "Historical Heatmap":
+#     st.subheader("🔥 Wildfire Live Probability Heatmap")
+#     df=pd.read_csv("grid_points_with_prob.csv")
+#     df['vegetation_type'] = np.random.choice(['1', '11', '10'], size=len(df))
+#     print(df.head())
+#     m = folium.Map(location=[54.0, -114.0], zoom_start=5)
+#     heat_data = df[['lat', 'lon','prob']].values.tolist()
+#     HeatMap(heat_data, radius=15, blur=10, max_zoom=8).add_to(m)
+#     st_folium(m, width=700, height=500)
+# # Placeholder for the heatmap
+#     st.markdown(
+#         """        <div style="text-align: center; color: gray; font-style: italic;">
+#             This is a live heatmap showing wildfire risk probabilities based on the latest model predictions.
+#         </div>
+#         """,
+#         unsafe_allow_html=True
+#     )       
 
 # Bottom placeholder section
-st.markdown("---")
-st.subheader("🔧 Additional Analysis ")
-st.markdown("""
-<div style="border: 2px dashed gray; padding: 20px; border-radius: 10px; background-color: #f9f9f9;">
-    <em>This section will be added later with more insights or visualizations.</em>
-</div>
-""", unsafe_allow_html=True)
-st.title("🔥 Wildfire Historical Analysis")
+base_url = "http://duckdb:9999"
+def build_query(viz_type, year=None, unit=None):
+    if viz_type == "heatmap":
+        return """
+            SELECT latitude, longitude
+            FROM my_table
+            WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        """
+    elif viz_type == "bar":
+        return """
+            SELECT fire_year, COUNT(*) as count
+            FROM my_table
+            WHERE fire_year IS NOT NULL
+            GROUP BY fire_year
+            ORDER BY fire_year
+        """
+    elif viz_type == "hist":
+        return """
+            SELECT size
+            FROM my_table
+            WHERE size IS NOT NULL
+        """
+    elif viz_type == "pie":
+        return """
+            SELECT general_cause_desc, COUNT(*) as count
+            FROM my_table
+            WHERE general_cause_desc IS NOT NULL
+            GROUP BY general_cause_desc
+            ORDER BY count DESC
+        """
+    else:
+        return "SELECT 1"
 
-# Create 4 columns
+# Layout
 col1, col2 = st.columns(2)
 col3, col4 = st.columns(2)
 
 # === 1. HEATMAP ===
 with col1:
     st.subheader("🔥 Wildfire Heatmap (Density)")
-    map_center = [54.0, -115.0]
-    import pandas as pd
-    # Replace with your actual file path
-    df = pd.read_csv("historical_wildfire.csv")
-
-    # Drop missing values if necessary
-    df = df.dropna(subset=['latitude', 'longitude'])
-
+    query = build_query("heatmap")
+    response = requests.post(base_url, data=query, timeout=10)
+    df_heat = pd.read_json(StringIO(response.text), lines=True)
 
     map_center = [54.0, -115.0]
     m = folium.Map(location=map_center, zoom_start=4, min_zoom=6, max_bounds=True)
-
-    # Create a list of coordinate points
-    heat_data = df[['latitude', 'longitude']].values.tolist()
-
-    #  Add heatmap
+    heat_data = df_heat[['latitude', 'longitude']].dropna().values.tolist()
     HeatMap(heat_data, radius=10).add_to(m)
     st_folium(m, width=700, height=700)
-# === 2. BAR CHART: Yearly Wildfires ===
+
+# === 2. BAR CHART ===
 with col2:
     st.subheader("📊 Yearly Wildfire Counts")
-    if 'fire_year' in df.columns:
-        year_counts = df['fire_year'].value_counts().sort_index()
-        st.bar_chart(year_counts)
+    query = build_query("bar")
+    response = requests.post(base_url, data=query, timeout=10)
+    df_yearly = pd.read_json(StringIO(response.text), lines=True)
+    st.bar_chart(df_yearly.set_index("fire_year"))
 
-# === 3. HISTOGRAM: Fire Sizes ===
+# === 3. HISTOGRAM ===
 with col3:
     st.subheader("📏 Distribution of Fire Sizes")
-    #st.plotly_chart(px.histogram(df, fire_year="size", nbins=50, title="Histogram of Fire Sizes"))
+    query = build_query("hist")
+    response = requests.post(base_url, data=query, timeout=10)
+    df_size = pd.read_json(StringIO(response.text), lines=True)
+    st.plotly_chart(px.histogram(df_size, x="size", nbins=50, title="Histogram of Fire Sizes"))
 
-# === 4. PIE CHART: Proportion by Cause (if available) ===
+# === 4. PIE CHART ===
 with col4:
-    st.subheader("🧯 Fire Causes (if available)")
-    if 'fuel_type' in df.columns:
-        cause_counts = df['fuel_type'].value_counts()
-        st.plotly_chart(px.pie(names=cause_counts.index, values=cause_counts.values, title="Fire Causes"))
+    st.subheader("🧯 Fire Causes")
+    query = build_query("pie")
+    response = requests.post(base_url, data=query, timeout=10)
+    df_cause = pd.read_json(StringIO(response.text), lines=True)
+
+    if not df_cause.empty:
+        st.plotly_chart(px.pie(df_cause, names="general_cause_desc", values="count", title="Fire Causes"))
     else:
-        st.info("No 'cause' column found in the data.")
+        st.info("No cause data found.")
